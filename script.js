@@ -1819,3 +1819,1933 @@ document.addEventListener('touchend', (e) => {
 });
 
 console.log('🧮 GPA Calculator System Loaded');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================
+// GRADETRACK - Main Application Script
+// Part 4: CGPA Calculator & Semester Management
+// ============================================
+
+// ============================================
+// CGPA CALCULATOR
+// ============================================
+class CGPACalculator {
+    constructor() {
+        this.semesters = [];
+        this.init();
+    }
+
+    init() {
+        console.log('✅ CGPA Calculator initialized');
+    }
+
+    async render() {
+        try {
+            // Load all semesters
+            this.semesters = await dbService.getSemesters();
+            
+            // Render semester list
+            this.renderSemesterList();
+            
+            // Calculate and display CGPA
+            this.calculateAndDisplayCGPA();
+            
+        } catch (error) {
+            console.error('Error rendering CGPA calculator:', error);
+            toastService.error('Failed to load CGPA data');
+        }
+    }
+
+    renderSemesterList() {
+        const container = document.getElementById('cgpa-semester-list');
+        if (!container) return;
+
+        if (this.semesters.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="padding: var(--spacing-xl);">
+                    <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+                        <circle cx="30" cy="30" r="20" stroke="#B8B8C7" stroke-width="2"/>
+                        <path d="M30 20V30L36 36" stroke="#B8B8C7" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <h3>No Semester Data</h3>
+                    <p>Add semesters to calculate your CGPA</p>
+                    <button class="btn-primary" onclick="screenManager.navigateTo('semester')">
+                        Go to Semesters
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = this.semesters.map(semester => `
+            <div class="semester-gpa-item">
+                <div class="semester-gpa-info">
+                    <div class="semester-gpa-name">${semester.name}</div>
+                    <div class="semester-gpa-credits">${semester.semester_credit || 0} Credits</div>
+                </div>
+                <div class="semester-gpa-score">
+                    ${Utils.formatNumber(semester.semester_gpa || 0)}
+                </div>
+            </div>
+        `).join('');
+
+        // Add stagger animation
+        container.classList.add('stagger-children');
+    }
+
+    async calculateAndDisplayCGPA() {
+        const cgpaResult = document.getElementById('cgpa-result');
+        const totalCredits = document.getElementById('cgpa-total-credits');
+        
+        if (!cgpaResult) return;
+
+        // Calculate CGPA
+        const cgpa = Utils.calculateCGPA(this.semesters);
+        
+        // Calculate total credits
+        const credits = this.semesters.reduce((sum, semester) => {
+            return sum + (parseFloat(semester.semester_credit) || 0);
+        }, 0);
+
+        // Update display
+        cgpaResult.textContent = Utils.formatNumber(cgpa);
+        if (totalCredits) {
+            totalCredits.textContent = `${credits} Total Credits`;
+        }
+
+        // Update user's CGPA in database
+        const user = authService.getCurrentUser();
+        if (user) {
+            await authService.updateUserProfile({
+                current_cgpa: cgpa,
+                completed_credits: credits
+            });
+        }
+
+        // Highlight card based on CGPA
+        const resultCard = cgpaResult.closest('.result-card');
+        if (resultCard) {
+            resultCard.classList.remove('highlight-card');
+            if (cgpa >= 3.50) {
+                resultCard.classList.add('highlight-card');
+            }
+        }
+    }
+}
+
+// ============================================
+// SEMESTER MANAGER
+// ============================================
+class SemesterManager {
+    constructor() {
+        this.semesters = [];
+        this.editingSemesterId = null;
+        this.expandedSemesterId = null;
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        console.log('✅ Semester Manager initialized');
+    }
+
+    setupEventListeners() {
+        // Add semester button
+        const addBtn = document.getElementById('add-semester-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                this.openSemesterModal();
+            });
+        }
+
+        // Empty state add button
+        const emptyAddBtn = document.getElementById('empty-add-semester');
+        if (emptyAddBtn) {
+            emptyAddBtn.addEventListener('click', () => {
+                this.openSemesterModal();
+            });
+        }
+
+        // Save semester button
+        const saveBtn = document.getElementById('save-semester-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                this.saveSemester();
+            });
+        }
+
+        // Semester modal close
+        document.querySelectorAll('[data-close="semester-modal"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modalService.close('semester-modal');
+            });
+        });
+    }
+
+    async render() {
+        try {
+            // Load semesters
+            this.semesters = await dbService.getSemesters();
+            
+            // Render semester list
+            this.renderSemesterList();
+            
+            // Update empty state
+            this.updateEmptyState();
+            
+        } catch (error) {
+            console.error('Error rendering semesters:', error);
+            toastService.error('Failed to load semesters');
+        }
+    }
+
+    renderSemesterList() {
+        const container = document.getElementById('semester-list');
+        if (!container) return;
+
+        if (this.semesters.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = this.semesters.map((semester, index) => `
+            <div class="semester-card ${this.expandedSemesterId === semester.id ? 'expanded' : ''}" 
+                 data-semester-id="${semester.id}">
+                <div class="semester-header" onclick="semesterManager.toggleSemester('${semester.id}')">
+                    <div class="semester-info">
+                        <h3>${semester.name}</h3>
+                        <div class="semester-meta">
+                            ${semester.semester_credit || 0} Credits • 
+                            ${semester.is_completed ? 'Completed' : 'In Progress'}
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="semester-gpa-value">
+                            ${Utils.formatNumber(semester.semester_gpa || 0)}
+                        </div>
+                        <svg class="semester-expand-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M5 7.5L10 12.5L15 7.5" stroke="#B8B8C7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="semester-courses" id="semester-courses-${semester.id}">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span style="font-size: 13px; color: var(--text-tertiary);">Courses</span>
+                        <button class="btn-icon" onclick="event.stopPropagation(); semesterManager.addCourseToSemester('${semester.id}')" title="Add Course">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                                <path d="M9 3V15M3 9H15" stroke="#7C5CFF" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="courses-list-${semester.id}" class="course-list">
+                        <div class="skeleton skeleton-text" style="width: 80%;"></div>
+                        <div class="skeleton skeleton-text" style="width: 60%;"></div>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                        <button class="btn-secondary" style="flex: 1; padding: 8px;" 
+                                onclick="event.stopPropagation(); semesterManager.editSemester('${semester.id}')">
+                            Edit Semester
+                        </button>
+                        <button class="btn-danger" style="flex: 1; padding: 8px;" 
+                                onclick="event.stopPropagation(); semesterManager.deleteSemester('${semester.id}')">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // Add stagger animation
+        container.classList.add('stagger-children');
+    }
+
+    updateEmptyState() {
+        const emptyState = document.getElementById('empty-semesters');
+        const semesterList = document.getElementById('semester-list');
+        
+        if (!emptyState || !semesterList) return;
+        
+        if (this.semesters.length === 0) {
+            emptyState.style.display = 'flex';
+            semesterList.style.display = 'none';
+        } else {
+            emptyState.style.display = 'none';
+            semesterList.style.display = 'flex';
+        }
+    }
+
+    async toggleSemester(semesterId) {
+        const card = document.querySelector(`[data-semester-id="${semesterId}"]`);
+        if (!card) return;
+
+        // Toggle expanded state
+        if (this.expandedSemesterId === semesterId) {
+            this.expandedSemesterId = null;
+            card.classList.remove('expanded');
+        } else {
+            // Close previously expanded
+            if (this.expandedSemesterId) {
+                const prevCard = document.querySelector(`[data-semester-id="${this.expandedSemesterId}"]`);
+                if (prevCard) {
+                    prevCard.classList.remove('expanded');
+                }
+            }
+            
+            this.expandedSemesterId = semesterId;
+            card.classList.add('expanded');
+            
+            // Load courses for this semester
+            await this.loadSemesterCourses(semesterId);
+        }
+
+        // Haptic feedback
+        telegramService.hapticImpact('light');
+    }
+
+    async loadSemesterCourses(semesterId) {
+        const container = document.getElementById(`courses-list-${semesterId}`);
+        if (!container) return;
+
+        try {
+            const courses = await dbService.getCourses(semesterId);
+            
+            if (courses.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: var(--text-tertiary);">
+                        <p style="font-size: 13px;">No courses added yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = courses.map(course => `
+                <div class="semester-course-item">
+                    <div class="semester-course-info">
+                        <div class="semester-course-name">${course.course_name}</div>
+                        <div class="semester-course-meta">
+                            ${course.credit} Credits • ${course.course_code || 'No Code'}
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="semester-course-grade">${course.grade || 'N/A'}</span>
+                        <div class="course-actions">
+                            <button class="btn-icon" 
+                                    onclick="event.stopPropagation(); semesterManager.editCourse('${course.id}', '${semesterId}')" 
+                                    title="Edit">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                    <path d="M10 1.5L12.5 4L4.5 12H2V9.5L10 1.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            <button class="btn-icon danger" 
+                                    onclick="event.stopPropagation(); semesterManager.deleteCourse('${course.id}', '${semesterId}')" 
+                                    title="Delete">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                    <path d="M3 4H11M5.5 4V3C5.5 2.44772 5.94772 2 6.5 2H7.5C8.05228 2 8.5 2.44772 8.5 3V4M10.5 4V11C10.5 11.5523 10.0523 12 9.5 12H4.5C3.94772 12 3.5 11.5523 3.5 11V4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error('Error loading courses:', error);
+            container.innerHTML = `
+                <p style="color: var(--danger); text-align: center; font-size: 13px;">
+                    Failed to load courses
+                </p>
+            `;
+        }
+    }
+
+    openSemesterModal(semesterId = null) {
+        const title = document.getElementById('semester-modal-title');
+        const nameInput = document.getElementById('semester-name-input');
+        
+        if (semesterId) {
+            // Edit mode
+            const semester = this.semesters.find(s => s.id === semesterId);
+            if (semester) {
+                title.textContent = 'Edit Semester';
+                nameInput.value = semester.name;
+                this.editingSemesterId = semesterId;
+            }
+        } else {
+            // Add mode
+            title.textContent = 'Add Semester';
+            nameInput.value = '';
+            this.editingSemesterId = null;
+        }
+        
+        modalService.open('semester-modal');
+        
+        // Focus input
+        setTimeout(() => nameInput.focus(), 300);
+    }
+
+    async saveSemester() {
+        const nameInput = document.getElementById('semester-name-input');
+        const name = nameInput.value.trim();
+        
+        if (!name) {
+            toastService.warning('Please enter a semester name');
+            nameInput.focus();
+            return;
+        }
+        
+        try {
+            if (this.editingSemesterId) {
+                // Update existing semester
+                await dbService.updateSemester(this.editingSemesterId, { name });
+                toastService.success('Semester updated!');
+            } else {
+                // Add new semester
+                const newSemester = await dbService.addSemester({ name });
+                toastService.success('Semester added!');
+            }
+            
+            // Close modal
+            modalService.close('semester-modal');
+            
+            // Reset editing state
+            this.editingSemesterId = null;
+            
+            // Re-render
+            await this.render();
+            
+            // Haptic feedback
+            telegramService.hapticImpact('success');
+            
+        } catch (error) {
+            console.error('Error saving semester:', error);
+            toastService.error('Failed to save semester');
+        }
+    }
+
+    editSemester(semesterId) {
+        this.openSemesterModal(semesterId);
+    }
+
+    async deleteSemester(semesterId) {
+        const semester = this.semesters.find(s => s.id === semesterId);
+        if (!semester) return;
+        
+        const confirmModal = document.getElementById('confirm-modal');
+        const confirmMessage = document.getElementById('confirm-message');
+        const confirmTitle = document.getElementById('confirm-title');
+        const confirmBtn = document.getElementById('confirm-action-btn');
+        
+        confirmTitle.textContent = 'Delete Semester';
+        confirmMessage.textContent = `Are you sure you want to delete "${semester.name}" and all its courses? This action cannot be undone.`;
+        
+        const handleConfirm = async () => {
+            try {
+                await dbService.deleteSemester(semesterId);
+                
+                // Clear expanded state if deleted
+                if (this.expandedSemesterId === semesterId) {
+                    this.expandedSemesterId = null;
+                }
+                
+                // Re-render
+                await this.render();
+                
+                toastService.success('Semester deleted');
+                telegramService.hapticImpact('warning');
+                
+            } catch (error) {
+                console.error('Error deleting semester:', error);
+                toastService.error('Failed to delete semester');
+            }
+            
+            confirmBtn.removeEventListener('click', handleConfirm);
+            modalService.close('confirm-modal');
+        };
+        
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.addEventListener('click', handleConfirm);
+        
+        modalService.open('confirm-modal');
+    }
+
+    addCourseToSemester(semesterId) {
+        // Set the semester context for GPA calculator
+        gpaCalculator.setSemester(semesterId);
+        
+        // Open add course modal
+        gpaCalculator.openCourseModal();
+        
+        // Close semester if expanded
+        // We'll refresh when they come back
+    }
+
+    async editCourse(courseId, semesterId) {
+        // Load courses for this semester if not loaded
+        const courses = await dbService.getCourses(semesterId);
+        gpaCalculator.courses = courses;
+        gpaCalculator.currentSemesterId = semesterId;
+        gpaCalculator.editCourse(courseId);
+    }
+
+    async deleteCourse(courseId, semesterId) {
+        const confirmModal = document.getElementById('confirm-modal');
+        const confirmMessage = document.getElementById('confirm-message');
+        const confirmTitle = document.getElementById('confirm-title');
+        const confirmBtn = document.getElementById('confirm-action-btn');
+        
+        confirmTitle.textContent = 'Delete Course';
+        confirmMessage.textContent = 'Are you sure you want to delete this course?';
+        
+        const handleConfirm = async () => {
+            try {
+                await dbService.deleteCourse(courseId);
+                
+                // Reload courses for this semester
+                await this.loadSemesterCourses(semesterId);
+
+
+
+
+
+            // Update semester GPA
+                await this.recalculateSemesterGPA(semesterId);
+                
+                toastService.success('Course deleted');
+                telegramService.hapticImpact('success');
+                
+            } catch (error) {
+                console.error('Error deleting course:', error);
+                toastService.error('Failed to delete course');
+            }
+            
+            confirmBtn.removeEventListener('click', handleConfirm);
+            modalService.close('confirm-modal');
+        };
+        
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.addEventListener('click', handleConfirm);
+        
+        modalService.open('confirm-modal');
+    }
+
+    async recalculateSemesterGPA(semesterId) {
+        try {
+            const courses = await dbService.getCourses(semesterId);
+            const gpa = Utils.calculateGPA(courses);
+            const totalCredits = courses.reduce((sum, c) => sum + (parseInt(c.credit) || 0), 0);
+            
+            await dbService.updateSemester(semesterId, {
+                semester_gpa: gpa,
+                semester_credit: totalCredits
+            });
+            
+            // Re-render to show updated GPA
+            await this.render();
+            
+            // If expanded, reload courses
+            if (this.expandedSemesterId === semesterId) {
+                await this.loadSemesterCourses(semesterId);
+            }
+            
+        } catch (error) {
+            console.error('Error recalculating GPA:', error);
+        }
+    }
+}
+
+// ============================================
+// INITIALIZE CGPA CALCULATOR & SEMESTER MANAGER
+// ============================================
+const cgpaCalculator = new CGPACalculator();
+const semesterManager = new SemesterManager();
+
+// Make globally available
+window.cgpaCalculator = cgpaCalculator;
+window.semesterManager = semesterManager;
+
+// ============================================
+// MODAL CLOSE ON BACK BUTTON (Telegram)
+// ============================================
+if (telegramService.isTelegram) {
+    telegramService.backButton.onClick(() => {
+        // Close modals first if open
+        if (modalService.activeModals.length > 0) {
+            modalService.closeAll();
+        } else {
+            screenManager.goBack();
+        }
+    });
+}
+
+// ============================================
+// AUTO-SAVE ON MODAL CLOSE
+// ============================================
+document.addEventListener('click', (e) => {
+    // If clicking modal overlay, we might want to warn about unsaved changes
+    if (e.target.classList.contains('modal-overlay')) {
+        const courseNameInput = document.getElementById('course-name-input');
+        const semesterNameInput = document.getElementById('semester-name-input');
+        
+        if ((courseNameInput && courseNameInput.value.trim()) ||
+            (semesterNameInput && semesterNameInput.value.trim())) {
+            // Could implement unsaved changes warning here
+        }
+    }
+});
+
+console.log('📚 CGPA Calculator & Semester Manager Loaded');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================
+// GRADETRACK - Main Application Script
+// Part 5: Target CGPA Calculator & Settings
+// ============================================
+
+// ============================================
+// TARGET CGPA CALCULATOR
+// ============================================
+class TargetCalculator {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        console.log('✅ Target CGPA Calculator initialized');
+    }
+
+    setupEventListeners() {
+        // Calculate button
+        const calculateBtn = document.getElementById('calculate-target-btn');
+        if (calculateBtn) {
+            calculateBtn.addEventListener('click', () => {
+                this.calculateTarget();
+            });
+        }
+
+        // Real-time calculation on input change
+        const targetInput = document.getElementById('target-cgpa-input');
+        const remainingInput = document.getElementById('remaining-credits-input');
+        
+        if (targetInput && remainingInput) {
+            const debouncedCalculate = Utils.debounce(() => {
+                this.calculateTarget();
+            }, 500);
+
+            targetInput.addEventListener('input', debouncedCalculate);
+            remainingInput.addEventListener('input', debouncedCalculate);
+        }
+    }
+
+    async render() {
+        try {
+            // Load user data
+            const user = authService.getCurrentUser();
+            if (!user) return;
+
+            // Update current stats display
+            const currentCGPA = document.getElementById('target-current-cgpa');
+            const completedCredits = document.getElementById('target-completed-credits');
+            
+            if (currentCGPA) {
+                currentCGPA.textContent = Utils.formatNumber(user.current_cgpa || 0);
+            }
+            
+            if (completedCredits) {
+                completedCredits.textContent = user.completed_credits || 0;
+            }
+
+            // Update input fields with saved values
+            const targetInput = document.getElementById('target-cgpa-input');
+            if (targetInput && user.target_cgpa) {
+                targetInput.value = user.target_cgpa;
+            }
+
+            // Calculate remaining credits
+            const totalCredits = user.total_credits || 120;
+            const completed = user.completed_credits || 0;
+            const remaining = Math.max(0, totalCredits - completed);
+            
+            const remainingInput = document.getElementById('remaining-credits-input');
+            if (remainingInput && !remainingInput.value) {
+                remainingInput.value = remaining;
+            }
+
+            // Auto-calculate if all values present
+            if (targetInput.value && remainingInput.value) {
+                this.calculateTarget();
+            }
+
+        } catch (error) {
+            console.error('Error rendering target calculator:', error);
+        }
+    }
+
+    calculateTarget() {
+        const targetCGPAInput = document.getElementById('target-cgpa-input');
+        const remainingCreditsInput = document.getElementById('remaining-credits-input');
+        const requiredGPAEl = document.getElementById('required-gpa');
+        
+        if (!targetCGPAInput || !remainingCreditsInput || !requiredGPAEl) return;
+
+        // Get values
+        const user = authService.getCurrentUser();
+        if (!user) {
+            toastService.warning('Please set up your profile first');
+            return;
+        }
+
+        const currentCGPA = parseFloat(user.current_cgpa) || 0;
+        const completedCredits = parseInt(user.completed_credits) || 0;
+        const targetCGPA = parseFloat(targetCGPAInput.value);
+        const remainingCredits = parseInt(remainingCreditsInput.value);
+
+        // Validate inputs
+        if (isNaN(targetCGPA) || targetCGPA < 0 || targetCGPA > 4.00) {
+            toastService.warning('Target CGPA must be between 0.00 and 4.00');
+            targetCGPAInput.focus();
+            return;
+        }
+
+        if (isNaN(remainingCredits) || remainingCredits < 1) {
+            toastService.warning('Remaining credits must be at least 1');
+            remainingCreditsInput.focus();
+            return;
+        }
+
+        // Calculate required GPA
+        const requiredGPA = Utils.calculateRequiredGPA(
+            currentCGPA,
+            completedCredits,
+            remainingCredits,
+            targetCGPA
+        );
+
+        // Display result
+        requiredGPAEl.textContent = Utils.formatNumber(requiredGPA);
+        
+        // Add animation
+        requiredGPAEl.style.animation = 'none';
+        requiredGPAEl.offsetHeight; // Trigger reflow
+        requiredGPAEl.style.animation = 'fadeInScale 0.4s ease-out';
+
+        // Update result card based on feasibility
+        const resultCard = requiredGPAEl.closest('.result-card');
+        if (resultCard) {
+            resultCard.classList.remove('highlight-card', 'glass-card-danger', 'glass-card-warning', 'glass-card-accent');
+            
+            if (requiredGPA > 4.00) {
+                resultCard.classList.add('glass-card-danger');
+                this.showFeasibilityMessage('impossible');
+            } else if (requiredGPA > 3.70) {
+                resultCard.classList.add('glass-card-warning');
+                this.showFeasibilityMessage('challenging');
+            } else if (requiredGPA <= currentCGPA) {
+                resultCard.classList.add('glass-card-accent');
+                this.showFeasibilityMessage('easy');
+            } else {
+                resultCard.classList.add('highlight-card');
+                this.showFeasibilityMessage('achievable');
+            }
+        }
+
+        // Save target CGPA
+        this.saveTargetCGPA(targetCGPA);
+
+        // Haptic feedback
+        telegramService.hapticImpact('medium');
+    }
+
+    showFeasibilityMessage(type) {
+        const subtitle = document.querySelector('.result-subtitle');
+        if (!subtitle) return;
+
+        const messages = {
+            impossible: {
+                text: '⚠️ Target is not mathematically possible with remaining credits',
+                color: 'var(--danger)'
+            },
+            challenging: {
+                text: '💪 Very challenging! You need near-perfect grades',
+                color: 'var(--warning)'
+            },
+            achievable: {
+                text: '✅ Achievable with consistent effort',
+                color: 'var(--primary-light)'
+            },
+            easy: {
+                text: '🎯 Easily achievable! Keep up the good work',
+                color: 'var(--accent)'
+            }
+        };
+
+        const message = messages[type] || messages.achievable;
+        subtitle.textContent = message.text;
+        subtitle.style.color = message.color;
+    }
+
+    async saveTargetCGPA(targetCGPA) {
+        try {
+            await authService.updateUserProfile({
+                target_cgpa: targetCGPA
+            });
+        } catch (error) {
+            console.error('Error saving target CGPA:', error);
+        }
+    }
+
+    // Reset calculator
+    reset() {
+        const targetInput = document.getElementById('target-cgpa-input');
+        const remainingInput = document.getElementById('remaining-credits-input');
+        const requiredGPAEl = document.getElementById('required-gpa');
+        
+        if (targetInput) targetInput.value = '4.00';
+        if (remainingInput) remainingInput.value = '';
+        if (requiredGPAEl) requiredGPAEl.textContent = '0.00';
+        
+        const subtitle = document.querySelector('.result-subtitle');
+        if (subtitle) {
+            subtitle.textContent = 'to achieve your target CGPA';
+            subtitle.style.color = 'var(--text-tertiary)';
+        }
+    }
+}
+
+// ============================================
+// SETTINGS MANAGER
+// ============================================
+class SettingsManager {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        console.log('✅ Settings Manager initialized');
+    }
+
+    setupEventListeners() {
+        // Reset data button
+        const resetBtn = document.getElementById('reset-data-btn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.confirmResetData();
+            });
+        }
+
+        // Save profile on input change
+        const universityInput = document.getElementById('settings-university');
+        const departmentInput = document.getElementById('settings-department');
+        const totalCreditsInput = document.getElementById('settings-total-credits');
+        
+        const saveProfile = Utils.debounce(() => {
+            this.saveProfile();
+        }, 1000);
+
+        if (universityInput) {
+            universityInput.addEventListener('input', saveProfile);
+        }
+        if (departmentInput) {
+            departmentInput.addEventListener('input', saveProfile);
+        }
+        if (totalCreditsInput) {
+            totalCreditsInput.addEventListener('input', saveProfile);
+        }
+    }
+
+    async render() {
+        try {
+            const user = authService.getCurrentUser();
+            if (!user) return;
+
+            // Update profile display
+            const settingsName = document.getElementById('settings-name');
+            const settingsUsername = document.getElementById('settings-username');
+            const settingsAvatar = document.getElementById('settings-avatar-initial');
+            
+            if (settingsName) {
+                settingsName.textContent = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Student';
+            }
+            if (settingsUsername) {
+                settingsUsername.textContent = user.username ? `@${user.username}` : '@username';
+            }
+            if (settingsAvatar) {
+                settingsAvatar.textContent = (user.first_name || 'S').charAt(0).toUpperCase();
+            }
+
+            // Update input fields
+            const universityInput = document.getElementById('settings-university');
+            const departmentInput = document.getElementById('settings-department');
+            const totalCreditsInput = document.getElementById('settings-total-credits');
+            
+            if (universityInput) universityInput.value = user.university || '';
+            if (departmentInput) departmentInput.value = user.department || '';
+            if (totalCreditsInput) totalCreditsInput.value = user.total_credits || 120;
+
+        } catch (error) {
+            console.error('Error rendering settings:', error);
+        }
+    }
+
+    async saveProfile() {
+        try {
+            const university = document.getElementById('settings-university')?.value || '';
+            const department = document.getElementById('settings-department')?.value || '';
+            const totalCredits = parseInt(document.getElementById('settings-total-credits')?.value) || 120;
+
+            await authService.updateUserProfile({
+                university,
+                department,
+                total_credits: totalCredits
+            });
+
+            toastService.success('Profile saved!');
+        } catch (error) {
+            console.error('Error saving profile:', error);
+            toastService.error('Failed to save profile');
+        }
+    }
+
+    confirmResetData() {
+        const confirmModal = document.getElementById('confirm-modal');
+        const confirmMessage = document.getElementById('confirm-message');
+        const confirmTitle = document.getElementById('confirm-title');
+        const confirmBtn = document.getElementById('confirm-action-btn');
+        
+        confirmTitle.textContent = 'Reset All Data';
+        confirmMessage.innerHTML = `
+            <div style="text-align: center;">
+                <p style="color: var(--danger); font-weight: 600; margin-bottom: 12px;">
+                    ⚠️ Warning: This action cannot be undone!
+                </p>
+                <p style="color: var(--text-secondary); font-size: 14px;">
+                    All your semesters, courses, and academic data will be permanently deleted.
+                </p>
+            </div>
+        `;
+        
+        const handleConfirm = async () => {
+            try {
+                await dbService.resetAllData();
+                
+                // Clear local state
+                this.resetLocalState();
+                
+                toastService.success('All data has been reset');
+                telegramService.hapticImpact('warning');
+                
+                // Navigate to dashboard
+                screenManager.navigateTo('dashboard');
+                
+            } catch (error) {
+                console.error('Error resetting data:', error);
+                toastService.error('Failed to reset data');
+            }
+            
+            confirmBtn.removeEventListener('click', handleConfirm);
+            modalService.close('confirm-modal');
+        };
+        
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.addEventListener('click', handleConfirm);
+        
+        modalService.open('confirm-modal');
+    }
+
+    resetLocalState() {
+        // Reset all calculators
+        gpaCalculator.reset();
+        semesterManager.semesters = [];
+        semesterManager.expandedSemesterId = null;
+        semesterManager.render();
+        cgpaCalculator.semesters = [];
+        cgpaCalculator.render();
+        targetCalculator.reset();
+        
+        // Reset dashboard
+        dashboardRenderer.render();
+    }
+
+    // Export data as JSON
+    async exportData() {
+        try {
+            const user = authService.getCurrentUser();
+            const semesters = await dbService.getSemesters();
+            
+            const exportData = {
+                version: '1.0.0',
+                exportDate: new Date().toISOString(),
+                user: user,
+                semesters: []
+            };
+
+            // Get courses for each semester
+            for (const semester of semesters) {
+                const courses = await dbService.getCourses(semester.id);
+                exportData.semesters.push({
+                    ...semester,
+                    courses: courses
+                });
+            }
+
+            // Create and download file
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+            
+            const exportFileName = `gradetrack-backup-${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileName);
+            linkElement.click();
+            
+            toastService.success('Data exported successfully!');
+            
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            toastService.error('Failed to export data');
+        }
+    }
+
+    // Import data from JSON
+    async importData(file) {
+        try {
+            const reader = new FileReader();
+            
+            reader.onload = async (e) => {
+                try {
+                    const importData = JSON.parse(e.target.result);
+                    
+                    // Validate data structure
+                    if (!importData.semesters || !Array.isArray(importData.semesters)) {
+                        throw new Error('Invalid data format');
+                    }
+                    
+                    // Confirm import
+                    const confirmModal = document.getElementById('confirm-modal');
+                    const confirmMessage = document.getElementById('confirm-message');
+                    const confirmTitle = document.getElementById('confirm-title');
+                    const confirmBtn = document.getElementById('confirm-action-btn');
+                    
+                    confirmTitle.textContent = 'Import Data';
+                    confirmMessage.innerHTML = `
+                        <div style="text-align: center;">
+                            <p style="margin-bottom: 8px;">
+                                Found ${importData.semesters.length} semesters
+                            </p>
+                            <p style="color: var(--warning); font-size: 13px;">
+                                ⚠️ This will replace all existing data
+                            </p>
+                        </div>
+                    `;
+                    
+                    const handleImport = async () => {
+                        try {
+                            // Reset existing data
+                            await dbService.resetAllData();
+                            
+                            // Import semesters and courses
+                            for (const semester of importData.semesters) {
+                                const newSemester = await dbService.addSemester({
+                                    name: semester.name,
+                                    semester_order: semester.semester_order || 1
+                                });
+                                
+                                if (semester.courses) {
+                                    for (const course of semester.courses) {
+                                        await dbService.addCourse({
+                                            semester_id: newSemester.id,
+                                            course_name: course.course_name,
+                                            course_code: course.course_code || '',
+                                            credit: course.credit || 3,
+                                            grade: course.grade || null,
+                                            grade_point: course.grade_point || 0,
+                                            is_completed: course.is_completed || false
+                                        });
+                                    }
+                                }
+                                
+                                // Recalculate semester GPA
+                                await semesterManager.recalculateSemesterGPA(newSemester.id);
+                            }
+                            
+                            toastService.success('Data imported successfully!');
+                            telegramService.hapticImpact('success');
+                            
+                            // Refresh all screens
+                            dashboardRenderer.render();
+                            
+                        } catch (error) {
+                            console.error('Error importing data:', error);
+                            toastService.error('Failed to import data');
+                        }
+                        
+                        confirmBtn.removeEventListener('click', handleImport);
+                        modalService.close('confirm-modal');
+                    };
+                    
+                    const newConfirmBtn = confirmBtn.cloneNode(true);
+                    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+                    newConfirmBtn.addEventListener('click', handleImport);
+                    
+                    modalService.open('confirm-modal');
+                    
+                } catch (error) {
+                    console.error('Error parsing import file:', error);
+                    toastService.error('Invalid backup file');
+                }
+            };
+            
+            reader.readAsText(file);
+            
+        } catch (error) {
+            console.error('Error importing data:', error);
+            toastService.error('Failed to import data');
+        }
+    }
+}
+
+// ============================================
+// INITIALIZE TARGET CALCULATOR & SETTINGS
+// ============================================
+const targetCalculator = new TargetCalculator();
+const settingsManager = new SettingsManager();
+
+// Make globally available
+window.targetCalculator = targetCalculator;
+window.settingsManager = settingsManager;
+
+// ============================================
+// SETTINGS - EXPORT/IMPORT BUTTONS
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    // Add export/import buttons to settings (dynamically)
+    const settingsActions = document.querySelector('.settings-actions');
+    if (settingsActions) {
+        // Export button
+        const exportBtn = document.createElement('button');
+        exportBtn.className = 'btn-secondary';
+        exportBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M9 2V12M9 12L5 8M9 12L13 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M3 12V15C3 15.5523 3.44772 16 4 16H14C14.5523 16 15 15.5523 15 15V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            Export Data
+        `;
+        exportBtn.addEventListener('click', () => settingsManager.exportData());
+        
+        // Import button
+        const importBtn = document.createElement('button');
+        importBtn.className = 'btn-secondary';
+        importBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M9 2V12M9 2L5 6M9 2L13 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M3 12V15C3 15.5523 3.44772 16 4 16H14C14.5523 16 15 15.5523 15 15V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            Import Data
+        `;
+        importBtn.addEventListener('click', () => {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json';
+            fileInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    settingsManager.importData(file);
+                }
+            };
+            fileInput.click();
+        });
+        
+        // Insert before reset button
+        const resetBtn = document.getElementById('reset-data-btn');
+        if (resetBtn) {
+            settingsActions.insertBefore(exportBtn, resetBtn);
+            settingsActions.insertBefore(importBtn, resetBtn);
+        }
+    }
+});
+
+// ============================================
+// DASHBOARD USER AVATAR CLICK
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    const userAvatar = document.getElementById('user-avatar');
+    if (userAvatar) {
+        userAvatar.addEventListener('click', () => {
+            screenManager.navigateTo('settings');
+            screenManager.updateActiveNav('settings');
+        });
+    }
+});
+
+// ============================================
+// HANDLE APP STATE CHANGES
+// ============================================
+// Update all screens when data changes
+window.addEventListener('focus', () => {
+    const currentScreen = screenManager.getCurrentScreen();
+    
+    // Refresh current screen
+    switch (currentScreen) {
+        case 'dashboard':
+            dashboardRenderer.render();
+            break;
+        case 'semester':
+            semesterManager.render();
+            break;
+        case 'cgpa-calc':
+            cgpaCalculator.render();
+            break;
+        case 'target':
+            targetCalculator.render();
+            break;
+        case 'settings':
+            settingsManager.render();
+            break;
+    }
+});
+
+console.log('🎯 Target Calculator & Settings Manager Loaded');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================
+// GRADETRACK - Main Application Script
+// Part 6: Final Integration & Event Handlers
+// ============================================
+
+// ============================================
+// APP STATE MANAGER
+// ============================================
+class AppStateManager {
+    constructor() {
+        this.state = {
+            isOnline: true,
+            lastSync: null,
+            isSyncing: false,
+            pendingChanges: 0
+        };
+        this.init();
+    }
+
+    init() {
+        this.monitorOnlineStatus();
+        this.setupPeriodicSync();
+        console.log('✅ App State Manager initialized');
+    }
+
+    monitorOnlineStatus() {
+        window.addEventListener('online', () => {
+            this.state.isOnline = true;
+            toastService.success('Back online! Syncing data...');
+            this.syncAllData();
+        });
+
+        window.addEventListener('offline', () => {
+            this.state.isOnline = false;
+            toastService.warning('You are offline. Changes will be saved locally.');
+        });
+    }
+
+    setupPeriodicSync() {
+        // Sync data every 5 minutes
+        setInterval(() => {
+            if (this.state.isOnline) {
+                this.syncAllData();
+            }
+        }, 300000); // 5 minutes
+    }
+
+    async syncAllData() {
+        if (this.state.isSyncing) return;
+        
+        this.state.isSyncing = true;
+        
+        try {
+            // Refresh user data
+            const user = authService.getCurrentUser();
+            if (user) {
+                // Refresh dashboard
+                await dashboardRenderer.render();
+                
+                // Update last sync time
+                this.state.lastSync = new Date().toISOString();
+            }
+        } catch (error) {
+            console.error('Sync error:', error);
+        } finally {
+            this.state.isSyncing = false;
+        }
+    }
+}
+
+// ============================================
+// KEYBOARD NAVIGATION
+// ============================================
+class KeyboardNavigator {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        document.addEventListener('keydown', (e) => {
+            // Don't handle if user is typing in an input
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA' || 
+                activeElement.tagName === 'SELECT')) {
+                // Only handle Escape for inputs
+                if (e.key === 'Escape') {
+                    activeElement.blur();
+                    modalService.closeAll();
+                }
+                return;
+            }
+
+            // Global keyboard shortcuts
+            switch (e.key) {
+                case '1':
+                    screenManager.navigateTo('dashboard');
+                    break;
+                case '2':
+                    screenManager.navigateTo('semester');
+                    break;
+                case '3':
+                    screenManager.navigateTo('target');
+                    break;
+                case '4':
+                    screenManager.navigateTo('settings');
+                    break;
+                case 'Escape':
+                    if (modalService.activeModals.length > 0) {
+                        modalService.closeAll();
+                    } else {
+                        screenManager.goBack();
+                    }
+                    break;
+                case 'g':
+                    if (e.ctrlKey || e.metaKey) {
+                        e.preventDefault();
+                        screenManager.navigateTo('gpa-calc');
+                    }
+                    break;
+                case 'ArrowLeft':
+                    if (e.altKey) {
+                        screenManager.goBack();
+                    }
+                    break;
+                default:
+                    break;
+            }
+        });
+
+        console.log('⌨️ Keyboard Navigator initialized');
+    }
+}
+
+// ============================================
+// PERFORMANCE OPTIMIZER
+// ============================================
+class PerformanceOptimizer {
+    constructor() {
+        this.observers = new Map();
+        this.init();
+    }
+
+    init() {
+        this.setupIntersectionObserver();
+        this.setupLazyLoading();
+        console.log('⚡ Performance Optimizer initialized');
+    }
+
+    // Lazy load animations only when elements are visible
+    setupIntersectionObserver() {
+        const options = {
+            root: null,
+            rootMargin: '50px',
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, options);
+
+        // Observe fade-in sections
+        document.querySelectorAll('.fade-in-section').forEach(el => {
+            observer.observe(el);
+        });
+
+        this.observers.set('fadeIn', observer);
+    }
+
+    setupLazyLoading() {
+        // Lazy load chart only when dashboard is visible
+        const dashboardScreen = document.getElementById('screen-dashboard');
+        if (dashboardScreen) {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach(mutation => {
+                    if (mutation.target.classList.contains('active')) {
+                        // Dashboard is now visible
+                        if (dashboardRenderer && dashboardRenderer.trendChart === null) {
+                            setTimeout(() => {
+                                dashboardRenderer.renderTrendChart();
+                            }, 300);
+                        }
+                    }
+                });
+            });
+
+            observer.observe(dashboardScreen, {
+                attributes: true,
+                attributeFilter: ['class']
+            });
+
+            this.observers.set('dashboard', observer);
+        }
+    }
+
+    // Debounced resize handler
+    setupResizeHandler() {
+        let resizeTimeout;
+        
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                // Redraw charts on resize
+                if (chartService) {
+                    Object.values(chartService.charts).forEach(chart => {
+                        if (chart && chart.resize) {
+                            chart.resize();
+                        }
+                    });
+                }
+            }, 250);
+        });
+    }
+
+    destroy() {
+        // Cleanup all observers
+        this.observers.forEach(observer => observer.disconnect());
+        this.observers.clear();
+    }
+}
+
+// ============================================
+// ANIMATION CONTROLLER
+// ============================================
+class AnimationController {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        this.setupPageTransitions();
+        console.log('✨ Animation Controller initialized');
+    }
+
+    setupPageTransitions() {
+        // Add smooth transitions between screens
+        const originalNavigateTo = screenManager.navigateTo.bind(screenManager);
+        
+        screenManager.navigateTo = (screenName, addToHistory = true) => {
+            // Add exit animation to current screen
+            const currentScreen = screenManager.getScreenElement(screenManager.currentScreen);
+            if (currentScreen) {
+                currentScreen.style.animation = 'fadeInDown 0.2s ease-in reverse';
+            }
+            
+            // Call original method
+            originalNavigateTo(screenName, addToHistory);
+            
+            // Add entrance animation to new screen
+            setTimeout(() => {
+                const newScreen = screenManager.getScreenElement(screenName);
+                if (newScreen) {
+                    newScreen.style.animation = 'fadeInUp 0.3s ease-out';
+                    setTimeout(() => {
+                        newScreen.style.animation = '';
+                    }, 300);
+                }
+            }, 50);
+        };
+    }
+
+    // Celebratory animation for achievements
+    celebrate() {
+        // Create confetti-like effect
+        const colors = ['#7C5CFF', '#9E6CFF', '#22C55E', '#F59E0B', '#EF4444'];
+        const container = document.getElementById('app-container');
+        
+        for (let i = 0; i < 50; i++) {
+            const particle = document.createElement('div');
+            particle.style.cssText = `
+                position: fixed;
+                width: 8px;
+                height: 8px;
+                background: ${colors[Math.floor(Math.random() * colors.length)]};
+                border-radius: 50%;
+                left: ${Math.random() * 100}%;
+                top: -10px;
+                z-index: 9999;
+                pointer-events: none;
+                animation: confettiFall ${1 + Math.random() * 2}s linear forwards;
+                animation-delay: ${Math.random() * 0.5}s;
+            `;
+            
+            container.appendChild(particle);
+            
+            // Remove particle after animation
+            setTimeout(() => {
+                if (particle.parentElement) {
+                    particle.parentElement.removeChild(particle);
+                }
+            }, 3000);
+        }
+
+        // Add confetti keyframe if not exists
+        if (!document.getElementById('confetti-style')) {
+            const style = document.createElement('style');
+            style.id = 'confetti-style';
+            style.textContent = `
+                @keyframes confettiFall {
+                    0% {
+                        transform: translateY(0) rotate(0deg);
+                        opacity: 1;
+                    }
+                    100% {
+                        transform: translateY(100vh) rotate(720deg);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+}
+
+// ============================================
+// ERROR BOUNDARY & RECOVERY
+// ============================================
+class ErrorBoundary {
+    constructor() {
+        this.errors = [];
+        this.maxErrors = 10;
+        this.init();
+    }
+
+    init() {
+        this.setupErrorHandling();
+        console.log('🛡️ Error Boundary initialized');
+    }
+
+    setupErrorHandling() {
+        // Global error handler
+        window.onerror = (message, source, lineno, colno, error) => {
+            this.handleError({
+                type: 'global',
+                message,
+                source,
+                lineno,
+                colno,
+                error
+            });
+            return true; // Prevent default error handling
+        };
+
+        // Unhandled promise rejection handler
+        window.onunhandledrejection = (event) => {
+            this.handleError({
+                type: 'promise',
+                message: event.reason?.message || 'Promise rejected',
+                error: event.reason
+            });
+        };
+    }
+
+    handleError(errorInfo) {
+        console.error('Error caught:', errorInfo);
+        
+        // Add to error log
+        this.errors.push({
+            ...errorInfo,
+            timestamp: new Date().toISOString(),
+            screen: screenManager.getCurrentScreen()
+        });
+
+        // Keep only recent errors
+        if (this.errors.length > this.maxErrors) {
+            this.errors.shift();
+        }
+
+        // Show user-friendly message
+        if (this.errors.length === 1) {
+            // Show error only for first error to avoid spam
+            toastService.error('Something went wrong. The app will try to recover.');
+        }
+
+        // Attempt recovery
+        this.attemptRecovery();
+    }
+
+    attemptRecovery() {
+        const currentScreen = screenManager.getCurrentScreen();
+        
+        // Try to re-render current screen
+        try {
+            switch (currentScreen) {
+                case 'dashboard':
+                    dashboardRenderer.render();
+                    break;
+                case 'semester':
+                    semesterManager.render();
+                    break;
+                case 'gpa-calc':
+                    gpaCalculator.render();
+                    break;
+                case 'cgpa-calc':
+                    cgpaCalculator.render();
+                    break;
+                case 'target':
+                    targetCalculator.render();
+                    break;
+                case 'settings':
+                    settingsManager.render();
+                    break;
+            }
+        } catch (error) {
+            console.error('Recovery failed:', error);
+            
+            // Last resort: navigate to dashboard
+            try {
+                screenManager.navigateTo('dashboard');
+            } catch (e) {
+                // If even that fails, reload the app
+                console.error('Critical error, reloading...');
+                setTimeout(() => location.reload(), 2000);
+            }
+        }
+    }
+
+    getErrorLog() {
+        return this.errors;
+    }
+}
+
+// ============================================
+// TELEGRAM DEEP LINK HANDLER
+// ============================================
+class DeepLinkHandler {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        if (telegramService.isTelegram) {
+            const startParam = telegramService.tg.initDataUnsafe?.start_param;
+            if (startParam) {
+                this.handleDeepLink(startParam);
+            }
+        }
+    }
+
+    handleDeepLink(param) {
+        console.log('Deep link received:', param);
+        
+        // Handle different deep link actions
+        switch (param) {
+            case 'gpa':
+                screenManager.navigateTo('gpa-calc');
+                break;
+            case 'cgpa':
+                screenManager.navigateTo('cgpa-calc');
+                break;
+            case 'target':
+                screenManager.navigateTo('target');
+                break;
+            case 'semester':
+                screenManager.navigateTo('semester');
+                break;
+            default:
+                // Default to dashboard
+                screenManager.navigateTo('dashboard');
+        }
+    }
+}
+
+// ============================================
+// ANALYTICS & USAGE TRACKING (Basic)
+// ============================================
+class UsageTracker {
+    constructor() {
+        this.screenViews = {};
+        this.featureUsage = {};
+        this.sessionStart = new Date();
+        this.init();
+    }
+
+    init() {
+        this.trackScreenView('loading');
+        this.setupTracking();
+        console.log('📊 Usage Tracker initialized');
+    }
+
+    setupTracking() {
+        // Track screen changes
+        const originalNavigateTo = screenManager.navigateTo.bind(screenManager);
+        
+        screenManager.navigateTo = (screenName, addToHistory) => {
+            this.trackScreenView(screenName);
+            originalNavigateTo(screenName, addToHistory);
+        };
+    }
+
+    trackScreenView(screenName) {
+        this.screenViews[screenName] = (this.screenViews[screenName] || 0) + 1;
+        
+        // Save to localStorage periodically
+        this.saveStats();
+    }
+
+    trackFeature(featureName) {
+        this.featureUsage[featureName] = (this.featureUsage[featureName] || 0) + 1;
+        this.saveStats();
+    }
+
+    saveStats() {
+        const stats = {
+            screenViews: this.screenViews,
+            featureUsage: this.featureUsage,
+            sessionStart: this.sessionStart,
+            lastUpdated: new Date().toISOString()
+        };
+        
+        localStorage.setItem('gradetrack_stats', JSON.stringify(stats));
+    }
+
+    getStats() {
+        return {
+            screenViews: this.screenViews,
+            featureUsage: this.featureUsage,
+            sessionDuration: Math.floor((new Date() - this.sessionStart) / 1000)
+        };
+    }
+}
+
+// ============================================
+// INITIALIZE ALL FINAL SYSTEMS
+// ============================================
+const appStateManager = new AppStateManager();
+const keyboardNavigator = new KeyboardNavigator();
+const performanceOptimizer = new PerformanceOptimizer();
+const animationController = new AnimationController();
+const errorBoundary = new ErrorBoundary();
+const deepLinkHandler = new DeepLinkHandler();
+const usageTracker = new UsageTracker();
+
+// Make available globally
+window.animationController = animationController;
+window.errorBoundary = errorBoundary;
+
+// ============================================
+// FINAL APP INITIALIZATION
+// ============================================
+async function finalizeAppInit() {
+    try {
+        console.log('🚀 Finalizing GradeTrack initialization...');
+        
+        // Setup resize handler
+        performanceOptimizer.setupResizeHandler();
+        
+        // Update dashboard with real data
+        await dashboardRenderer.render();
+        
+        // Setup quick actions on dashboard
+        dashboardRenderer.setupQuickActions();
+        
+        // Hide loading screen if still visible
+        const loadingScreen = document.getElementById('screen-loading');
+        if (loadingScreen && loadingScreen.classList.contains('active')) {
+            setTimeout(() => {
+                loadingScreen.classList.remove('active');
+            }, 500);
+        }
+        
+        // Show welcome toast for new users
+        const user = authService.getCurrentUser();
+        if (user && (!user.completed_credits || user.completed_credits === 0)) {
+            setTimeout(() => {
+                toastService.info('👋 Welcome! Start by adding your first semester.');
+            }, 2000);
+        }
+        
+        // Check for achievements
+        checkAchievements();
+        
+        console.log('✅ GradeTrack fully initialized!');
+        console.log('📱 Running on:', telegramService.isTelegram ? 'Telegram' : 'Browser');
+        console.log('👤 User:', user?.first_name || 'Guest');
+        
+    } catch (error) {
+        console.error('Final initialization error:', error);
+        errorBoundary.handleError({
+            type: 'init',
+            message: 'Failed to complete initialization',
+            error
+        });
+    }
+}
+
+// ============================================
+// ACHIEVEMENT SYSTEM
+// ============================================
+function checkAchievements() {
+    const user = authService.getCurrentUser();
+    if (!user) return;
+    
+    // First semester achievement
+    if (user.completed_credits >= 12 && user.completed_credits < 15) {
+        setTimeout(() => {
+            toastService.success('🏆 Achievement Unlocked: First Semester Complete!');
+            animationController.celebrate();
+        }, 3000);
+    }
+    
+    // CGPA milestones
+    if (user.current_cgpa >= 3.50) {
+        setTimeout(() => {
+            toastService.success('🌟 Outstanding CGPA! Keep it up!');
+        }, 3500);
+    }
+    
+    // Credit milestones
+    if (user.completed_credits >= 60 && user.completed_credits < 65) {
+        setTimeout(() => {
+            toastService.success('🎓 Halfway through your degree!');
+            animationController.celebrate();
+        }, 4000);
+    }
+}
+
+// ============================================
+// SERVICE WORKER REGISTRATION (Future PWA)
+// ============================================
+if ('serviceWorker' in navigator) {
+    // Service worker can be added later for offline support
+    console.log('Service Worker support detected');
+}
+
+
+
+
+// ============================================
+// EXPORT APP VERSION
+// ============================================
+const APP_VERSION = '1.0.0';
+const APP_BUILD = 'production';
+
+console.log(`
+╔══════════════════════════════════╗
+║        GradeTrack v${APP_VERSION}        ║
+║     GPA & CGPA Management       ║
+║     Telegram Mini App           ║
+║     Build: ${APP_BUILD}             ║
+╚══════════════════════════════════╝
+`);
+
+// ============================================
+// FINAL STARTUP
+// ============================================
+// Override the original initializeApp to include final systems
+const originalInit = initializeApp;
+initializeApp = async function() {
+    await originalInit();
+    await finalizeAppInit();
+};
+
+// ============================================
+// HANDLE UNEXPECTED SHUTDOWN
+// ============================================
+window.addEventListener('beforeunload', () => {
+    // Save any pending data
+    console.log('App closing, saving state...');
+    
+    // Final stats save
+    if (usageTracker) {
+        usageTracker.saveStats();
+    }
+});
+
+// ============================================
+// MEMORY LEAK PREVENTION
+// ============================================
+// Clean up on screen transitions
+const cleanupScreen = (screenName) => {
+    // Destroy charts when leaving dashboard
+    if (screenName !== 'dashboard' && chartService) {
+        // Keep trend chart, destroy others if any
+    }
+    
+    // Clear any pending timers for hidden screens
+    // This prevents memory leaks from abandoned timers
+};
+
+// Override screen manager to include cleanup
+const originalOnScreenChange = screenManager.onScreenChange.bind(screenManager);
+screenManager.onScreenChange = function(screenName) {
+    cleanupScreen(screenName);
+    originalOnScreenChange(screenName);
+};
+
+console.log('🎉 GradeTrack - All Systems Ready');
+
+

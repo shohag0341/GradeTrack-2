@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- ============================================
+    GRADETRACK - GPA & CGPA Management Telegram Mini App
+    ============================================ -->
+    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#09090F">
+    <meta name="description" content="The best GPA & CGPA management app for Telegram">
+    <meta name="telegram-webapp-theme-color" content="#09090F">
+    
+    <title>GradeTrack</title>
+    
+    <!-- Google Fonts - Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    
+    <!-- ============================================
+    APP CONTAINER
+    ============================================ -->
+    <div id="app-container">
+        
+        <!-- ============================================
+        LOADING SCREEN
+        ============================================ -->
+        <div id="screen-loading" class="screen active">
+            <div class="loading-container">
+                <div class="loading-logo">
+                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="40" cy="40" r="36" stroke="#7C5CFF" stroke-width="4" fill="none"/>
+                        <path d="M28 50L36 38L44 46L52 30" stroke="#7C5CFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="52" cy="30" r="3" fill="#22C55E"/>
+                    </svg>
+                </div>
+                <div class="loading-text">GradeTrack</div>
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+        
+        <!-- ============================================
+        SCREEN: DASHBOARD
+        ============================================ -->
+        <div id="screen-dashboard" class="screen">
+            <header class="screen-header">
+                <div class="header-greeting">
+                    <h1 id="greeting-text">Good Morning</h1>
+                    <p id="greeting-name">Student</p>
+                </div>
+                <div class="header-avatar" id="user-avatar">
+                    <span id="avatar-initial">S</span>
+                </div>
+            </header>
+            
+            <main class="screen-content dashboard-content">
+                <!-- CGPA Card -->
+                <div class="glass-card cgpa-card">
+                    <div class="cgpa-card-header">
+                        <div class="cgpa-label">Current CGPA</div>
+                        <div class="cgpa-badge" id="academic-status">Excellent</div>
+                    </div>
+                    <div class="cgpa-value" id="dashboard-cgpa">3.75</div>
+                    <div class="cgpa-stats">
+                        <div class="stat-item">
+                            <span class="stat-value" id="completed-credits">72</span>
+                            <span class="stat-label">Credits</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="total-semesters">4</span>
+                            <span class="stat-label">Semesters</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="total-courses">24</span>
+                            <span class="stat-label">Courses</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <div class="action-card glass-card" data-screen="gpa-calc">
+                        <div class="action-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 8V12L15 15" stroke="#7C5CFF" stroke-width="2" stroke-linecap="round"/>
+                                <circle cx="12" cy="12" r="9" stroke="#7C5CFF" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="action-text">GPA Calculator</span>
+                    </div>
+                    
+                    <div class="action-card glass-card" data-screen="cgpa-calc">
+                        <div class="action-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M9 12L11 14L15 10" stroke="#9E6CFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="9" stroke="#9E6CFF" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="action-text">CGPA Calculator</span>
+                    </div>
+                    
+                    <div class="action-card glass-card" data-screen="semester">
+                        <div class="action-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <rect x="3" y="3" width="7" height="7" rx="1" stroke="#22C55E" stroke-width="2"/>
+                                <rect x="14" y="3" width="7" height="7" rx="1" stroke="#22C55E" stroke-width="2"/>
+                                <rect x="3" y="14" width="7" height="7" rx="1" stroke="#22C55E" stroke-width="2"/>
+                                <rect x="14" y="14" width="7" height="7" rx="1" stroke="#22C55E" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="action-text">Semesters</span>
+                    </div>
+                    
+                    <div class="action-card glass-card" data-screen="target">
+                        <div class="action-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="9" stroke="#F59E0B" stroke-width="2"/>
+                                <circle cx="12" cy="12" r="5" stroke="#F59E0B" stroke-width="2"/>
+                                <circle cx="12" cy="12" r="1" fill="#F59E0B"/>
+                            </svg>
+                        </div>
+                        <span class="action-text">Target CGPA</span>
+                    </div>
+                </div>
+                
+                <!-- GPA Trend -->
+                <div class="glass-card trend-card">
+                    <div class="trend-header">
+                        <h3>GPA Trend</h3>
+                        <span class="trend-link" data-screen="trend">View All</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="trend-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Recent Semesters -->
+                <div class="recent-section">
+                    <div class="section-header">
+                        <h3>Recent Semesters</h3>
+                        <span class="section-link" data-screen="semester">Manage</span>
+                    </div>
+                    <div id="recent-semesters-list" class="semesters-mini-list">
+                        <!-- Dynamic content -->
+                    </div>
+                </div>
+            </main>
+                      </div>
+
+
+
+
+
+        <!-- ============================================
+        SCREEN: GPA CALCULATOR
+        ============================================ -->
+        <div id="screen-gpa-calc" class="screen">
+            <header class="screen-header">
+                <button class="back-button" data-back="dashboard">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <h2>GPA Calculator</h2>
+                <div class="header-placeholder"></div>
+            </header>
+            
+            <main class="screen-content gpa-calc-content">
+                <!-- Result Card -->
+                <div class="glass-card result-card">
+                    <div class="result-label">Current GPA</div>
+                    <div class="result-value" id="gpa-result">0.00</div>
+                    <div class="result-details">
+                        <span id="gpa-total-credits">0 Credits</span>
+                        <span class="dot">•</span>
+                        <span id="gpa-total-courses">0 Courses</span>
+                    </div>
+                </div>
+                
+                <!-- Course List -->
+                <div id="gpa-course-list" class="course-list">
+                    <!-- Dynamic course cards -->
+                </div>
+                
+                <!-- Add Course Button -->
+                <button class="btn-primary btn-add-course" id="gpa-add-course-btn">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M10 4V16M4 10H16" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Add Course
+                </button>
+            </main>
+        </div>
+        
+        <!-- ============================================
+        SCREEN: CGPA CALCULATOR
+        ============================================ -->
+        <div id="screen-cgpa-calc" class="screen">
+            <header class="screen-header">
+                <button class="back-button" data-back="dashboard">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <h2>CGPA Calculator</h2>
+                <div class="header-placeholder"></div>
+            </header>
+            
+            <main class="screen-content cgpa-calc-content">
+                <!-- CGPA Result -->
+                <div class="glass-card result-card">
+                    <div class="result-label">Overall CGPA</div>
+                    <div class="result-value" id="cgpa-result">0.00</div>
+                    <div class="result-details">
+                        <span id="cgpa-total-credits">0 Total Credits</span>
+                    </div>
+                </div>
+                
+                <!-- Semester GPAs -->
+                <div id="cgpa-semester-list" class="semester-gpa-list">
+                    <!-- Dynamic semester GPA cards -->
+                </div>
+                
+                <div class="cgpa-info-card glass-card">
+                    <p class="info-text">CGPA is calculated automatically from your semester data.</p>
+                </div>
+            </main>
+        </div>
+        
+        <!-- ============================================
+        SCREEN: SEMESTER MANAGEMENT
+        ============================================ -->
+        <div id="screen-semester" class="screen">
+            <header class="screen-header">
+                <button class="back-button" data-back="dashboard">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <h2>Semesters</h2>
+                <button class="header-action" id="add-semester-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 5V19M5 12H19" stroke="#7C5CFF" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </header>
+            
+            <main class="screen-content semester-content">
+                <div id="semester-list" class="semester-full-list">
+                    <!-- Dynamic semester cards -->
+                </div>
+                
+                <div id="empty-semesters" class="empty-state">
+                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                        <rect x="15" y="15" width="22" height="22" rx="3" stroke="#B8B8C7" stroke-width="2"/>
+                        <rect x="43" y="15" width="22" height="22" rx="3" stroke="#B8B8C7" stroke-width="2"/>
+                        <rect x="15" y="43" width="22" height="22" rx="3" stroke="#B8B8C7" stroke-width="2"/>
+                        <rect x="43" y="43" width="22" height="22" rx="3" stroke="#B8B8C7" stroke-width="2"/>
+                    </svg>
+                    <h3>No Semesters Yet</h3>
+                    <p>Add your first semester to start tracking</p>
+                    <button class="btn-primary" id="empty-add-semester">Add Semester</button>
+                </div>
+            </main>
+        </div>
+        
+        <!-- ============================================
+        SCREEN: TARGET CGPA
+        ============================================ -->
+        <div id="screen-target" class="screen">
+            <header class="screen-header">
+                <button class="back-button" data-back="dashboard">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <h2>Target CGPA</h2>
+                <div class="header-placeholder"></div>
+            </header>
+            
+            <main class="screen-content target-content">
+                <!-- Current Stats -->
+                <div class="glass-card stats-card">
+                    <div class="stats-row">
+                        <div class="stats-item">
+                            <span class="stats-value" id="target-current-cgpa">3.50</span>
+                            <span class="stats-label">Current CGPA</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stats-value" id="target-completed-credits">72</span>
+                            <span class="stats-label">Completed Credits</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Target Input -->
+                <div class="glass-card target-input-card">
+                    <label class="input-label">Target CGPA</label>
+                    <input type="number" 
+                           id="target-cgpa-input" 
+                           class="input-field" 
+                           placeholder="4.00" 
+                           min="0" 
+                           max="4.00" 
+                           step="0.01"
+                           value="4.00">
+                    
+                    <label class="input-label">Remaining Credits</label>
+                    <input type="number" 
+                           id="remaining-credits-input" 
+                           class="input-field" 
+                           placeholder="60" 
+                           min="1" 
+                           max="200">
+                </div>
+                
+                <!-- Result -->
+                <div class="glass-card result-card highlight-card">
+                    <div class="result-label">Required GPA</div>
+                    <div class="result-value" id="required-gpa">0.00</div>
+                    <div class="result-subtitle">to achieve your target CGPA</div>
+                </div>
+                
+                <button class="btn-primary" id="calculate-target-btn">Calculate</button>
+            </main>
+                          </div>
+
+
+
+
+ <!-- ============================================
+        SCREEN: SETTINGS
+        ============================================ -->
+        <div id="screen-settings" class="screen">
+            <header class="screen-header">
+                <button class="back-button" data-back="dashboard">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <h2>Settings</h2>
+                <div class="header-placeholder"></div>
+            </header>
+            
+            <main class="screen-content settings-content">
+                <!-- Profile Section -->
+                <div class="glass-card profile-card">
+                    <div class="profile-avatar" id="settings-avatar">
+                        <span id="settings-avatar-initial">S</span>
+                    </div>
+                    <div class="profile-info">
+                        <h3 id="settings-name">Student</h3>
+                        <p id="settings-username">@username</p>
+                    </div>
+                </div>
+                
+                <!-- University Info -->
+                <div class="glass-card settings-card">
+                    <h3>Academic Info</h3>
+                    <div class="settings-field">
+                        <label>University</label>
+                        <input type="text" id="settings-university" class="input-field" placeholder="Your University">
+                    </div>
+                    <div class="settings-field">
+                        <label>Department</label>
+                        <input type="text" id="settings-department" class="input-field" placeholder="Your Department">
+                    </div>
+                    <div class="settings-field">
+                        <label>Total Credits Required</label>
+                        <input type="number" id="settings-total-credits" class="input-field" placeholder="120" min="1">
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="settings-actions">
+                    <button class="btn-danger" id="reset-data-btn">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M10 2V6M10 6L7 3M10 6L13 3" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 10C3 6.13 6.13 3 10 3" stroke="#EF4444" stroke-width="2"/>
+                            <path d="M17 10C17 13.87 13.87 17 10 17" stroke="#EF4444" stroke-width="2"/>
+                        </svg>
+                        Reset All Data
+                    </button>
+                </div>
+                
+                <!-- About -->
+                <div class="glass-card about-card">
+                    <h3>About GradeTrack</h3>
+                    <p class="about-version">Version 1.0.0</p>
+                    <p class="about-text">The best GPA & CGPA management app for Telegram. Track your academic journey with style.</p>
+                    <p class="about-copyright">© 2024 GradeTrack</p>
+                </div>
+            </main>
+        </div>
+        
+        <!-- ============================================
+        FLOATING NAVIGATION
+        ============================================ -->
+        <nav class="floating-nav">
+            <button class="nav-item active" data-screen="dashboard">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <path d="M3 9L11 2L19 9V19C19 19.5304 18.7893 20.0391 18.4142 20.4142C18.0391 20.7893 17.5304 21 17 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 21V11H14V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Home</span>
+            </button>
+            
+            <button class="nav-item" data-screen="semester">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    <rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    <rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    <rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>Semesters</span>
+            </button>
+            
+            <button class="nav-item" data-screen="target">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                    <circle cx="11" cy="11" r="4" stroke="currentColor" stroke-width="2"/>
+                    <circle cx="11" cy="11" r="1" fill="currentColor"/>
+                </svg>
+                <span>Target</span>
+            </button>
+            
+            <button class="nav-item" data-screen="settings">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <circle cx="11" cy="11" r="3" stroke="currentColor" stroke-width="2"/>
+                    <path d="M18.7279 13.12C18.8604 12.7477 18.9349 12.3611 18.9349 11.96V11.04C18.9349 10.6389 18.8604 10.2523 18.7279 9.88L20.5079 8.46C20.6679 8.34 20.7279 8.12 20.6679 7.92L18.9479 4.88C18.8879 4.7 18.6679 4.6 18.4879 4.66L16.3279 5.54C15.8959 5.20756 15.4354 4.92182 14.9479 4.68L14.6079 2.38C14.5879 2.16 14.3879 2 14.1479 2H10.8079C10.5879 2 10.3879 2.16 10.3479 2.38L10.0079 4.68C9.52033 4.92182 9.05983 5.20756 8.62793 5.54L6.48793 4.66C6.30793 4.6 6.08793 4.7 6.02793 4.88L4.28793 7.92C4.22793 8.12 4.28793 8.34 4.44793 8.46L6.22793 9.88C6.09534 10.2523 6.02085 10.6389 6.02085 11.04V11.96C6.02085 12.3611 6.09534 12.7477 6.22793 13.12L4.44793 14.54C4.28793 14.66 4.22793 14.88 4.28793 15.08L6.00793 18.12C6.06793 18.3 6.28793 18.4 6.46793 18.34L8.62793 17.46C9.05983 17.7924 9.52033 18.0782 10.0079 18.32L10.3479 20.62C10.3879 20.84 10.5879 21 10.8079 21H14.1479C14.3679 21 14.5679 20.84 14.6079 20.62L14.9479 18.32C15.4354 18.0782 15.8959 17.7924 16.3279 17.46L18.4679 18.34C18.6479 18.4 18.8679 18.3 18.9279 18.12L20.6679 15.08C20.7279 14.88 20.6679 14.66 20.5079 14.54L18.7279 13.12Z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>Settings</span>
+            </button>
+        </nav>
+        
+        <!-- ============================================
+        MODALS
+        ============================================ -->
+        
+        <!-- Course Modal (Add/Edit) -->
+        <div id="course-modal" class="modal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h3 id="course-modal-title">Add Course</h3>
+                    <button class="modal-close" data-close="course-modal">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M15 5L5 15M5 5L15 15" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Course Name</label>
+                        <input type="text" id="course-name-input" class="input-field" placeholder="e.g. Data Structures">
+                    </div>
+                    <div class="form-group">
+                        <label>Course Code (Optional)</label>
+                        <input type="text" id="course-code-input" class="input-field" placeholder="e.g. CSE 201">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Credits</label>
+                            <input type="number" id="course-credit-input" class="input-field" placeholder="3" min="1" max="10" value="3">
+                        </div>
+                        <div class="form-group">
+                            <label>Grade</label>
+                            <select id="course-grade-input" class="input-field">
+                                <option value="">Select Grade</option>
+                                <option value="A+">A+ (4.00)</option>
+                                <option value="A">A (4.00)</option>
+                                <option value="A-">A- (3.70)</option>
+                                <option value="B+">B+ (3.30)</option>
+                                <option value="B">B (3.00)</option>
+                                <option value="B-">B- (2.70)</option>
+                                <option value="C+">C+ (2.30)</option>
+                                <option value="C">C (2.00)</option>
+                                <option value="C-">C- (1.70)</option>
+                                <option value="D+">D+ (1.30)</option>
+                                <option value="D">D (1.00)</option>
+                                <option value="F">F (0.00)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" data-close="course-modal">Cancel</button>
+                    <button class="btn-primary" id="save-course-btn">Save Course</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Semester Modal (Add/Edit) -->
+        <div id="semester-modal" class="modal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h3 id="semester-modal-title">Add Semester</h3>
+                    <button class="modal-close" data-close="semester-modal">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M15 5L5 15M5 5L15 15" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Semester Name</label>
+                        <input type="text" id="semester-name-input" class="input-field" placeholder="e.g. Fall 2024">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" data-close="semester-modal">Cancel</button>
+                    <button class="btn-primary" id="save-semester-btn">Save Semester</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Confirmation Modal -->
+        <div id="confirm-modal" class="modal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h3 id="confirm-title">Confirm</h3>
+                    <button class="modal-close" data-close="confirm-modal">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M15 5L5 15M5 5L15 15" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p id="confirm-message">Are you sure?</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" data-close="confirm-modal">Cancel</button>
+                    <button class="btn-danger" id="confirm-action-btn">Confirm</button>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- ============================================
+    SCRIPTS
+    ============================================ -->
+    
+    <!-- Supabase Configuration -->
+    <script src="supabase.js"></script>
+    
+    <!-- Main Application -->
+    <script src="script.js"></script>
+    
+</body>
+                      </html>
+
+
+
+
+
+
+      
+
+
+
+
+
+      
